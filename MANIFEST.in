@@ -1,0 +1,2 @@
+recursive-include pamose/templates *
+recursive-include pamose/static *
