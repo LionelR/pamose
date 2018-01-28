@@ -57,3 +57,8 @@ working directory to create and write log files in it, and finally run a
 [WSGI container](http://flask.pocoo.org/docs/0.12/deploying/wsgi-standalone/) with the application.
 And, most likely, it will also run behind a
 [reverse proxy](http://flask.pocoo.org/docs/0.12/deploying/wsgi-standalone/#proxy-setups).
+
+## Dependencies
+
+ - [https://flask-restful.readthedocs.io/en/latest/]flask-restful
+ - [http://flask-sqlalchemy.pocoo.org]flask-sqlalchemy
