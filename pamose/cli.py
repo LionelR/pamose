@@ -2,8 +2,8 @@
 import os
 import sys
 import click
-from .settings import ProdConfig, DevConfig
-from .app import create_app
+from pamose.settings import ProdConfig, DevConfig
+from pamose.app import create_app
 
 HERE = os.path.abspath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.join(HERE, os.pardir)
@@ -30,16 +30,3 @@ def test():
     import pytest
     rv = pytest.main([TEST_PATH, '--verbose'])
     exit(rv)
-
-
-@click.command()
-@click.option('--url', default=None,
-              help='Url to test (ex. /static/image.png)')
-@click.option('--order', default='rule',
-              help='Property on Rule to order by (default: rule)')
-def urls(url, order):
-    """Display all of the url matching routes for the project.
-
-    Borrowed from Flask-Script, converted to use Click.
-    """
-    pass
