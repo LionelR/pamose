@@ -3,6 +3,7 @@ Database models definitions
 """
 
 import time
+from sqlalchemy import event
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
@@ -181,3 +182,14 @@ class MetricType(db.Model):
 def register(app):
     db.init_app(app=app)
     db.create_all(app=app)
+
+    app.logger.info("Inserting Initial Values for Severity")
+    event.listen(Severity.__table__, 'after_create', insert_initial_values)
+
+
+def insert_initial_values(*args, **kwargs):
+
+    for name, value in [('LOW', 0), ('MEDIUM', 1), ('HIGH', 2), ('CRITICAL', 3)]:
+        s = Severity(name=name, value=value)
+        db.session.add(s)
+    db.session.commit()
