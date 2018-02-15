@@ -1,6 +1,11 @@
+"""
+Database models definitions
+"""
+
 import time
-from .extensions import db
-import sqlalchemy as db  # auto-completion
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
 
 # Many-to-many secondary (central) tables definition
 user_usergroup_table = db.Table('user_usergroup',
@@ -11,7 +16,7 @@ user_usergroup_table = db.Table('user_usergroup',
 
 role_right_table = db.Table('role_right',
                             db.Model.metadata,
-                            db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+                            db.Column('role_id', db.Integer, db.ForeignKey('role.id'), primary_key=True),
                             db.Column('right_id', db.Integer, db.ForeignKey('right.id'), primary_key=True)
                             )
 
@@ -22,15 +27,12 @@ entity_tag_table = db.Table('entity_tag',
                             )
 
 
-class Base(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-
-
-class User(Base):
+class User(db.Model):
     """
     Users able to connect and perform actions in the database
     """
     __tablename__ = 'user'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
     password = db.Column(db.String, nullable=False)
     token = db.Column(db.String, nullable=False)
@@ -40,37 +42,41 @@ class User(Base):
     user_groups = db.relationship('UserGroup', secondary=user_usergroup_table, backref='users', lazy=True)
 
 
-class UserGroup(Base):
+class UserGroup(db.Model):
     """
     Users groups
     """
     __tablename__ = 'user_group'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
 
 
-class Role(Base):
+class Role(db.Model):
     """
     Users roles (admin, anonymous, ...)
     """
     __tablename__ = 'role'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
     description = db.Column(db.String, nullable=True)
     rights = db.relationship('Right', secondary=role_right_table, backref='roles', lazy=True)
 
 
-class Right(Base):
+class Right(db.Model):
     """
     Description of roles rights (write, append, read, ...)
     """
     __tablename__ = 'right'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
 
 
-class Entity(Base):
+class Entity(db.Model):
     """
-    Central table for describing to logical hierarchy of monitored objects
+    Central table for describing the logical hierarchy of monitored objects
     """
     __tablename__ = 'entity'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
     alias = db.Column(db.String, nullable=True)
     tags = db.relationship('Tag', secondary=entity_tag_table, backref='entities', lazy=True)
@@ -89,11 +95,12 @@ class Entity(Base):
     auto_expirable_interval = db.Column(db.Integer, nullable=False, default=0)
 
 
-class State(Base):
+class State(db.Model):
     """
     List of possible states (EXPIRED, OK, UP, DOWN, ...) by Entity Type
     """
     __tablename__ = 'state'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
     severity_id = db.Column(db.Integer, db.ForeignKey('severity.id'))
     severity = db.relationship("Severity", backref='states')
@@ -101,37 +108,41 @@ class State(Base):
     entity_type = db.relationship("EntityType", backref='states')
 
 
-class Severity(Base):
+class Severity(db.Model):
     """
     States severities levels
     """
     __tablename__ = 'severity'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
     value = db.Column(db.Integer, unique=True, nullable=False)
     description = db.Column(db.String, unique=False, nullable=True)
 
 
-class Tag(Base):
+class Tag(db.Model):
     """
     Available tags
     """
     __tablename__ = 'tag'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
 
 
-class EntityType(Base):
+class EntityType(db.Model):
     """
     List of entities types (Realm, Host, Service, ...)
     """
     __tablename__ = 'entity_type'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
 
 
-class Livestate(Base):
+class Livestate(db.Model):
     """
     For storing entities livestates
     """
     __tablename__ = 'livestate'
+    id = db.Column(db.Integer, primary_key=True)
     entity_id = db.Column(db.Integer, db.ForeignKey('entity.id'))
     state_id = db.Column(db.Integer, db.ForeignKey('state.id'))
     state = db.relationship('State', backref='livestates', lazy=True)
@@ -144,11 +155,12 @@ class Livestate(Base):
     metrics = db.relationship('Metric', backref='livestate', lazy=True)
 
 
-class Metric(Base):
+class Metric(db.Model):
     """
     For storing livestates metrics
     """
     __tablename__ = 'metric'
+    id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=time.time())
     name = db.Column(db.String, unique=False, nullable=False)
     value = db.Column(db.Float, unique=False, nullable=True)
@@ -157,9 +169,15 @@ class Metric(Base):
     metric_type = db.relationship('MetricType', backref='metrics', lazy=True)
 
 
-class MetricType(Base):
+class MetricType(db.Model):
     """
     Possible metric type (standard or cumulative)
     """
     __tablename__ = 'metric_type'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
+
+
+def register(app):
+    db.init_app(app=app)
+    db.create_all(app=app)

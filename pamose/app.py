@@ -1,30 +1,31 @@
-# -*- coding: utf-8 -*-
-"""The app module, containing the app factory function."""
-from flask import Flask  # , render_template
+"""
+The app module, containing the app factory function.
+"""
 
-from pamose import cli, models
-from .extensions import db
-from .settings import ProdConfig
+import os
+from flask import Flask
+
+from pamose.models import register as register_db
+from pamose.schemas import register as register_schemas
+from pamose.loggers import register as register_loggers
 
 
-def create_app(config_object=ProdConfig):
-    """An application factory, as explained here: http://flask.pocoo.org/docs/patterns/appfactories/.
-
+def create_app(config_object):
+    """
+    The Flask Application creating function
     :param config_object: The configuration object to use.
     """
+    #  An application factory, as explained here: http://flask.pocoo.org/docs/patterns/appfactories/.
     app = Flask(__name__.split('.')[0])
     app.config.from_object(config_object)
-    register_extensions(app)
+    # app.config.from_envvar('PAMOSE_SETTINGS')
+    register_db(app)
+    register_schemas(app)
+    # register_loggers(app)
+
     # register_errorhandlers(app)
-    register_shellcontext(app)
-    register_commands(app)
+    # register_shellcontext(app)
     return app
-
-
-def register_extensions(app):
-    """Register Flask extensions."""
-    db.init_app(app)
-    return None
 
 
 # def register_errorhandlers(app):
@@ -38,21 +39,15 @@ def register_extensions(app):
 #         app.errorhandler(errcode)(render_error)
 #     return None
 
+#
+# def register_shellcontext(app):
+#     """Register shell context objects."""
+#     from pamose import models
+#     def shell_context():
+#         """Shell context objects."""
+#         return {
+#             'db': db,
+#             'User': models.User}
+#
+#     app.shell_context_processor(shell_context)
 
-def register_shellcontext(app):
-    """Register shell context objects."""
-    def shell_context():
-        """Shell context objects."""
-        return {
-            'db': db,
-            'User': models.User}
-
-    app.shell_context_processor(shell_context)
-
-
-def register_commands(app):
-    """Register Click commands."""
-    app.cli.add_command(cli.test)
-    app.cli.add_command(cli.lint)
-    app.cli.add_command(cli.clean)
-    app.cli.add_command(cli.urls)

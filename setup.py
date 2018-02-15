@@ -8,8 +8,18 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
+        'click',
+        'werkzeug',
         'flask',
         'flask-restful',
-        'flask-sqlalchemy'
+        'sqlalchemy',
+        'marshmallow-sqlalchemy',
+        'flask-sqlalchemy',
+        'flask_marshmallow',
+        'pytest'
     ],
+    entry_points='''
+        [console_scripts]
+        pamose=pamose.cli:run
+    ''',
 )

@@ -1,3 +1,7 @@
-from flask_sqlalchemy import SQLAlchemy
+"""
+All extensions needed for the app
+"""
 
-db = SQLAlchemy()
+
+
+
