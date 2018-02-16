@@ -21,7 +21,7 @@ def run(mode):
         print("You can only use dev or prod for config mode")
         sys.exit(1)
     app = create_app(config_object=config)
-    app.run()
+    app.run(use_reloader=False)
 
 
 @click.command()

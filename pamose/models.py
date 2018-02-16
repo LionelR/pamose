@@ -3,8 +3,7 @@ Database models definitions
 """
 
 import time
-from sqlalchemy import event
-from flask_sqlalchemy import SQLAlchemy
+from flask_sqlalchemy import SQLAlchemy, event
 
 db = SQLAlchemy()
 
@@ -65,7 +64,7 @@ class Role(db.Model):
 
 class Right(db.Model):
     """
-    Description of roles rights (write, append, read, ...)
+    Description of roles rights (CRUD)
     """
     __tablename__ = 'right'
     id = db.Column(db.Integer, primary_key=True)
@@ -172,24 +171,79 @@ class Metric(db.Model):
 
 class MetricType(db.Model):
     """
-    Possible metric type (standard or cumulative)
+    Possible metric type (value or cumulative)
     """
     __tablename__ = 'metric_type'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
+    description = db.Column(db.String, unique=False, nullable=True)
 
 
 def register(app):
-    db.init_app(app=app)
-    db.create_all(app=app)
+    app.logger.debug("Registering database...")
+    with app.app_context():
+        db.init_app(app=app)
+        initial_datas(app=app)
+        db.create_all(app=app)
 
-    app.logger.info("Inserting Initial Values for Severity")
-    event.listen(Severity.__table__, 'after_create', insert_initial_values)
+
+INITIAL_TABLES = {
+    MetricType: [
+        {'name': 'scalaire', 'description': 'Valeur indépendante et fluctuante'},
+        {'name': 'cumulative', 'description': 'Valeur qui se cumule dans le temps'},
+        {'name': 'delta', 'description': 'Différence entre deux valeurs cumulatives'},
+    ],
+    EntityType: [
+        {'name': 'realm'},
+        {'name': 'host'},
+        {'name': 'service'},
+    ],
+    Tag: [
+        {'name': 'Applications'},
+        {'name': 'Global'},
+        {'name': 'Logiciels'},
+        {'name': 'Périphériques'},
+        {'name': 'Services'},
+    ],
+    Severity: [
+        {'name': 'NOTHING', 'description': 'Sans gravité', 'value': 0},
+        {'name': 'LOW', 'description': 'Sévérité basse', 'value': 1},
+        {'name': 'MEDIUM', 'description': 'Sévérité moyenne', 'value': 2},
+        {'name': 'HIGH', 'description': 'Sévérité grave', 'value': 3},
+    ],
+    Right: [
+        {'name': 'create'},
+        {'name': 'read'},
+        {'name': 'update'},
+        {'name': 'delete'},
+    ],
+    UserGroup: [
+        {'name': 'admin'},
+        {'name': 'reader'},
+        {'name': 'borne'},
+    ]
+}
 
 
-def insert_initial_values(*args, **kwargs):
+def initial_datas(app):
+    """
+    Prepare and create Tables classes instances with initial values creation, to be commited after the tables are
+    first time created
+    :param app: the app instance (for logger)
+    :return: list. queries to commit for first time datas insertion
+    """
 
-    for name, value in [('LOW', 0), ('MEDIUM', 1), ('HIGH', 2), ('CRITICAL', 3)]:
-        s = Severity(name=name, value=value)
-        db.session.add(s)
+    #  From https://stackoverflow.com/questions/30067591/alembic-sqlalchemy-after-create-not-triggering
+    def create(param):
+        def callee(table, connection, **kwargs):
+            app.logger.debug("Creating initial datas for table {0}...".format(table))
+            for values in INITIAL_TABLES[param]:
+                t = param(**values)
+                db.session.add(t)
+
+        return callee
+
+    for table_class in INITIAL_TABLES:
+        event.listen(table_class.__table__, 'after_create', create(table_class))
+
     db.session.commit()
