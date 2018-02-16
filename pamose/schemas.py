@@ -71,6 +71,7 @@ class MetricTypeSchema(ma.ModelSchema):
 
 
 def register(app):
+    app.logger.debug("Registering schemas...")
     ma.init_app(app=app)
 
 

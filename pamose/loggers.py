@@ -6,6 +6,7 @@ import logging
 
 
 def register(app):
+    app.logger.debug("Registering loggers...")
     if not app.debug:
         from logging.handlers import TimedRotatingFileHandler
         # https://docs.python.org/3.6/library/logging.handlers.html#timedrotatingfilehandler

@@ -6,6 +6,8 @@ from flask import render_template
 
 def register(app):
     """Register error handlers."""
+    app.logger.debug("Registering error handlers...")
+
     def render_error(error):
         """Render error template."""
         # If a HTTPException, pull the `code` attribute; default to 500

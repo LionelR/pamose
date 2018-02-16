@@ -6,6 +6,8 @@ from pamose import models
 
 def register(app):
     """Register shell context objects."""
+    app.logger.debug("Registering Shell contexts...")
+
     def shell_context():
         """Shell context objects."""
         return {

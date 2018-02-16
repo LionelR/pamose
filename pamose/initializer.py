@@ -4,6 +4,7 @@ Initial Datas population
 
 from pamose import models
 
+
 INITIAL_TABLES = {
     models.MetricType: [
         {'name': 'scalaire', 'description': 'Valeur indépendante et fluctuante'},
@@ -42,25 +43,16 @@ INITIAL_TABLES = {
 }
 
 
-def initial_datas(app):
+def insert_datas(app):
     """
-    Prepare and create Tables classes instances with initial values creation, to be commited after the tables are
-    first time created
-    :param app: the app instance (for logger)
-    :return: list. queries to commit for first time datas insertion
+    Insert initial datas suitable for usage
     """
+    app.logger.debug("Inserting initial datas...")
 
-    #  From https://stackoverflow.com/questions/30067591/alembic-sqlalchemy-after-create-not-triggering
-    def create(param):
-        def callee(table, connection, **kwargs):
-            app.logger.debug("Creating initial datas for table {0}...".format(table))
-            for values in INITIAL_TABLES[param]:
-                t = param(**values)
-                db.session.add(t)
+    with app.app_context():
+        for table, datas in INITIAL_TABLES.items():
+            for data in datas:
+                t = table(**data)
+                models.db.session.add(t)
 
-        return callee
-
-    for table_class in INITIAL_TABLES:
-        event.listen(table_class.__table__, 'after_create', create(table_class))
-
-    db.session.commit()
+        models.db.session.commit()
