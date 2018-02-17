@@ -39,9 +39,3 @@ class MetricTypeListResource(Resource):
 
 api.add_resource(MetricTypeResource, '/metrictype/<id>')
 api.add_resource(MetricTypeListResource, '/metrictypes')
-
-
-def register(app):
-    app.logger.debug("Registering API...")
-    api.init_app(app)
-

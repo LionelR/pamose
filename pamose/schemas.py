@@ -68,11 +68,4 @@ class MetricSchema(ma.ModelSchema):
 class MetricTypeSchema(ma.ModelSchema):
     class Meta:
         model = models.MetricType
-
-
-def register(app):
-    app.logger.debug("Registering schemas...")
-    ma.init_app(app=app)
-
-
-
+        fields = ('id', 'name', 'description')

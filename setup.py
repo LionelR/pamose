@@ -20,6 +20,6 @@ setup(
     ],
     entry_points='''
         [console_scripts]
-        pamose=pamose.cli:run
+        pamose=pamose.launcher:cli
     ''',
 )

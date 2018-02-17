@@ -179,9 +179,41 @@ class MetricType(db.Model):
     description = db.Column(db.String, unique=False, nullable=True)
 
 
-def register(app):
-    app.logger.debug("Registering database...")
-    db.init_app(app=app)
-    with app.app_context():
-        db.create_all()
+INITIAL_TABLES = {
+    MetricType: [
+        {'name': 'scalaire', 'description': 'Valeur indépendante et fluctuante'},
+        {'name': 'cumulative', 'description': 'Valeur qui se cumule dans le temps'},
+        {'name': 'delta', 'description': 'Différence entre deux valeurs cumulatives'},
+    ],
+    EntityType: [
+        {'name': 'realm'},
+        {'name': 'host'},
+        {'name': 'service'},
+    ],
+    Tag: [
+        {'name': 'Applications'},
+        {'name': 'Global'},
+        {'name': 'Logiciels'},
+        {'name': 'Périphériques'},
+        {'name': 'Services'},
+    ],
+    Severity: [
+        {'name': 'NOTHING', 'description': 'Sans gravité', 'value': 0},
+        {'name': 'LOW', 'description': 'Sévérité basse', 'value': 1},
+        {'name': 'MEDIUM', 'description': 'Sévérité moyenne', 'value': 2},
+        {'name': 'HIGH', 'description': 'Sévérité grave', 'value': 3},
+    ],
+    Right: [
+        {'name': 'create'},
+        {'name': 'read'},
+        {'name': 'update'},
+        {'name': 'delete'},
+    ],
+    UserGroup: [
+        {'name': 'admin'},
+        {'name': 'reader'},
+        {'name': 'borne'},
+    ]
+}
+
 
