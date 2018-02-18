@@ -2,11 +2,17 @@
 Extras click commands
 """
 
+import os
+
 import click
 from flask import current_app
 from flask.cli import with_appcontext
 
 from . import models
+
+HERE = os.path.abspath(os.path.dirname(__file__))
+PROJECT_ROOT = os.path.join(HERE, os.pardir)
+TEST_PATH = os.path.join(PROJECT_ROOT, 'tests')
 
 
 @click.command()
@@ -26,3 +32,12 @@ def initdb():
                 models.db.session.add(t)
 
         models.db.session.commit()
+
+
+@click.command()
+@with_appcontext
+def tests():
+    """Run the tests."""
+    import pytest
+    rv = pytest.main([TEST_PATH, '--verbose'])
+    exit(rv)
