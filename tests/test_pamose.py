@@ -88,5 +88,6 @@ def test_post_model(session):
     session.commit()
 
     ug = models.UserGroup.query.all()
+    print(ug)
     assert len(ug) < 2
     # assert realm.id > 0
