@@ -213,6 +213,12 @@ INITIAL_TABLES = {
         {'name': 'admin'},
         {'name': 'reader'},
         {'name': 'borne'},
+    ],
+    Role: [
+        {'name': 'testrole', 'id': 0}
+    ],
+    User: [
+        {'name': 'testuser', 'password': 'testpw', 'token': 'testtoken', 'role_id': 0}
     ]
 }
 

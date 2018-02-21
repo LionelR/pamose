@@ -13,6 +13,7 @@ ma = Marshmallow()  # Serialization extension
 class UserSchema(ma.ModelSchema):
     class Meta:
         model = models.User
+        fields = ('id', 'name')
 
 
 class UserGroupSchema(ma.ModelSchema):
