@@ -2,12 +2,27 @@
 The publicly exposed ressources
 """
 
+from flask_httpauth import HTTPBasicAuth
 from sqlalchemy.exc import IntegrityError
 from flask_restful import Resource, Api
 from flask import request
 from . import models, schemas
 
 api = Api()
+auth = HTTPBasicAuth()
+
+
+@auth.verify_password
+def verify_password(username_or_token, password):
+    # first try to authenticate by token
+    user = models.User.verify_auth_token(username_or_token)
+    if not user:
+        # try to authenticate with username/password
+        user = models.User.query.filter_by(name=username_or_token).first()
+        if not user or not user.verify_password(password):
+            return False
+    # g.user = user
+    return user
 
 
 def make_response(result=None, feedback=None, issues=None):
@@ -94,34 +109,58 @@ api.add_resource(MetricTypeListResource, '/metrictypes')
 
 class UserResource(Resource):
 
-    def get(self):
-        datas = models.User.query.all()
-        schema = schemas.UserSchema(many=True)
-        json = schema.dump(obj=datas).data
-        return make_response(feedback=json), 200
-
+    @auth.login_required
     def post(self):
+        """
+        Create a new user
+        :return:
+        """
         json_data = request.get_json(force=True)
         if not json_data:
             return make_response(issues='No input data provided'), 400
 
-        # Validate and deserialize input
-        schema = schemas.UserSchema()
-        data, issues = schema.load(json_data)
-        if issues:
-            return make_response(issues=issues), 422
+        username = json_data.get('name', None)
+        password = json_data.get('password', None)
+        if username is None or password is None:
+            return make_response(issues='Not enough input data provided'), 400
 
-        name = data.name
-        password = data.password
+        if models.User.query.filter_by(username=username).first() is not None:
+            return make_response(issues='Existing user'), 400
 
-        auth_user = models.User.query.filter_by(name=name).first()
+        user = models.User(username=username)
+        user.hash_password(password)  # Hash and set password_hash in db
+        models.db.session.add(user)
+        models.db.session.commit()
 
-        if not auth_user:
-            return make_response(issues='User not found'), 404
-
-        token = auth_user.token
-
-        return make_response(result=token), 200
+        return make_response(feedback={'name': user.name}), 201  # , {'Location': url_for('get_user',
+                                                                         # id=user.id, _external=True)}
 
 
-api.add_resource(UserResource, '/login')
+api.add_resource(UserResource, '/user')
+
+
+class LoginRessource(Resource):
+
+    # @auth.login_required
+    def post(self):
+        """
+        Request a new token
+        :return:
+        """
+        json_data = request.get_json(force=True)
+        if not json_data:
+            return make_response(issues='No input data provided'), 400
+
+        username = json_data.get('name', None)
+        password = json_data.get('password', None)
+
+        auth_user = verify_password(username_or_token=username, password=password)
+        if auth_user:
+            token = auth_user.generate_auth_token()
+            return make_response(result=token.decode('ascii')), 200
+        else:
+            return make_response(issues="No accepted credentials"), 400
+
+
+api.add_resource(LoginRessource, '/login')
+

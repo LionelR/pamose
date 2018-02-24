@@ -9,14 +9,17 @@ setup(
     zip_safe=False,
     install_requires=[
         'click',
+        'pytest',
         'werkzeug',
-        'flask',
-        'flask-restful',
+        'itsdangerous',
+        'passlib',
         'sqlalchemy',
         'marshmallow-sqlalchemy',
+        'flask',
+        'flask-restful',
         'flask-sqlalchemy',
         'flask_marshmallow',
-        'pytest'
+        'flask_httpauth'
     ],
     entry_points='''
         [console_scripts]

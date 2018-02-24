@@ -1,14 +1,13 @@
 """
 The app module, containing the app factory function.
 """
-
+import os
 from flask import Flask
 
-from .settings import Config, DevConfig
+from .default_settings import Config
 from .models import db
 from .schemas import ma
 from .ressources import api
-
 from . import commands
 
 from .loggers import register as register_loggers
@@ -19,20 +18,33 @@ from .shellcontexts import register as register_shellcontexts
 def create_app(config=None):
     """
     The Flask Application creating function
+    :type config: dict. An optional Flask configuration dictionnary
     """
 
     app = Flask(__name__.split('.')[0])
-    app.config.from_object(DevConfig)
-    app.config.from_envvar('PAMOSE_CONFIG_FILE', silent=True)
+
+    # Configuration part
+    # Load the default settings
+    app.config.from_object(Config)
+    # Supercharge from cfg file defined in environment variable
+    from_env = app.config.from_envvar('PAMOSE_SETTINGS', silent=False)
+    if from_env:
+        app.logger.debug('Using settings file %s', os.environ['PAMOSE_SETTINGS'])
+    # Supercharge from config parameter
     if config:
         app.config.update(config)  # Extras config parameters
-    # app.logger.info('Using configuration file %s', app.config['PAMOSE_CONFIG_FILE'])
+
+    # Register extras application commands lines
+    register_commands(app=app)
+
+    # Register loggers
+    register_loggers(app)
+
+    # Register extensions
     register_db(app=app)
     register_schemas(app=app)
     register_ressources(app=app)
-    register_commands(app=app)
 
-    # register_loggers(app)
     # register_errorhandlers(app)
     # register_shellcontext(app)
 

@@ -27,9 +27,16 @@ def initdb():
     current_app.logger.debug("Inserting initial datas...")
     with current_app.app_context():
         for table, datas in models.INITIAL_TABLES.items():
-            for data in datas:
-                t = table(**data)
-                models.db.session.add(t)
+            if table is models.User:
+                for data in datas:
+                    password = data.pop('password')
+                    user = models.User(**data)
+                    user.hash_password(password=password)
+                    models.db.session.add(user)
+            else:
+                for data in datas:
+                    t = table(**data)
+                    models.db.session.add(t)
 
         models.db.session.commit()
 
