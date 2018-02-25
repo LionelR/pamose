@@ -27,7 +27,7 @@ def create_app(config=None):
     # Load the default settings
     app.config.from_object(Config)
     # Supercharge from cfg file defined in environment variable
-    from_env = app.config.from_envvar('PAMOSE_SETTINGS', silent=False)
+    from_env = app.config.from_envvar('PAMOSE_SETTINGS', silent=True)
     if from_env:
         app.logger.debug('Using settings file %s', os.environ['PAMOSE_SETTINGS'])
     # Supercharge from config parameter

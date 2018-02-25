@@ -3,6 +3,9 @@
 import os
 import pytest
 
+import requests
+from requests.auth import HTTPBasicAuth
+
 from pamose.app import create_app
 from pamose.models import db as _db
 from pamose import models
@@ -11,6 +14,8 @@ from pamose import models
 TESTDB = 'test_project.db'
 TESTDB_PATH = "/tmp/{}".format(TESTDB)
 TEST_DATABASE_URI = 'sqlite:///' + TESTDB_PATH
+
+URL = 'http://127.0.0.1:5000'
 
 
 @pytest.fixture(scope='session')
@@ -48,9 +53,17 @@ def db(app, request):
 
     app.logger.debug("Inserting initial datas...")
     for table, datas in models.INITIAL_TABLES.items():
-        for data in datas:
-            t = table(**data)
-            _db.session.add(t)
+        if table is models.User:
+            for data in datas:
+                password = data.pop('password')
+                user = models.User(**data)
+                user.set_password_hash(password=password)
+                _db.session.add(user)
+        else:
+            for data in datas:
+                t = table(**data)
+                _db.session.add(t)
+
     _db.session.commit()
 
     request.addfinalizer(teardown)
@@ -77,7 +90,7 @@ def session(db, request):
     return session
 
 
-def test_post_model(session):
+def test_post_new_entity_type(session):
     realm = models.EntityType(name='Realm')
     host = models.EntityType(name='Host')
     service = models.EntityType(name='Service')
@@ -87,7 +100,17 @@ def test_post_model(session):
     session.add(service)
     session.commit()
 
-    ug = models.UserGroup.query.all()
-    print(ug)
-    assert len(ug) < 2
-    # assert realm.id > 0
+    assert realm.id > 0
+
+
+def test_login(session):
+    endpoint = URL + '/login'
+    rsession = requests.Session()
+    rsession.header = {'Content-Type': 'application/json'}
+
+    params = {'username': 'admin', 'password': 'admin'}
+    response = rsession.post(endpoint, json=params)
+    json = response.json()
+    status = json.get('_status', None)
+
+    assert status == "OK"

@@ -8,6 +8,7 @@ from flask_sqlalchemy import SQLAlchemy
 from passlib.apps import custom_app_context as pwd_context
 from itsdangerous import (TimedJSONWebSignatureSerializer as Serializer, BadSignature, SignatureExpired)
 
+
 db = SQLAlchemy()
 
 # Many-to-many secondary (central) tables definition
@@ -38,33 +39,52 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String, nullable=True)  # Will be completed by self.hash_password after user instanciation
-    token = db.Column(db.String, nullable=True)
     email = db.Column(db.String, nullable=True)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
     role = db.relationship('Role', backref='users', lazy=True)
     user_groups = db.relationship('UserGroup', secondary=user_usergroup_table, backref='users', lazy=True)
 
-    def hash_password(self, password):
+    def set_password_hash(self, password):
+        """
+        Encrypt the provided password and store it in the db
+        :param password: str. The plain password to encrypt and store
+        """
         self.password_hash = pwd_context.encrypt(password)
 
     def verify_password(self, password):
+        """
+        Compares the provided password with the stored and encrypted one
+        :param password: str. The plain password to compare
+        :return: bool. True if passwords match, else False
+        """
         return pwd_context.verify(password, self.password_hash)
 
-    def generate_auth_token(self, expiration=600):
-        s = Serializer(current_app.config['SECRET_KEY'], expires_in=expiration)
+    def new_token(self):
+        """
+        Returns a new serialized token, bassed on
+        app.SECRET_KEY and app.TOKEN_EXIRATION_TIME
+
+        :return: str. the serialized new token with the user's id in it
+        """
+        s = Serializer(current_app.config['SECRET_KEY'], expires_in=current_app.config['TOKEN_EXPIRATION_TIME'])
         return s.dumps({'id': self.id})
 
     @staticmethod
-    def verify_auth_token(token):
+    def verify_token(token):
+        """
+        Verifies the provided token.
+        :param token: str. the token to verify
+        :return: bool. True if the token is ok, else False
+        """
         s = Serializer(current_app.config['SECRET_KEY'])
         try:
             data = s.loads(token)
         except SignatureExpired:
-            return None  # valid token, but expired
+            return False  # valid token, but expired
         except BadSignature:
-            return None  # invalid token
+            return False  # invalid token
         user = User.query.get(data['id'])
-        return user
+        return user is not None
 
 
 class UserGroup(db.Model):
@@ -115,9 +135,10 @@ class Entity(db.Model):
     livestates = db.relationship('Livestate', backref='entity', lazy=True)
     is_auto_acknowledge = db.Column(db.Boolean, nullable=False, default=False)
     is_template = db.Column(db.Boolean, nullable=False, default=False)
-    is_activated = db.Column(db.Boolean, nullable=False, default=False)
-    is_auto_expirable = db.Column(db.Boolean, nullable=False, default=True)
-    auto_expirable_interval = db.Column(db.Integer, nullable=False, default=0)
+    is_monitored = db.Column(db.Boolean, nullable=False, default=False)
+    is_expirable = db.Column(db.Boolean, nullable=False, default=True)
+    heartbeat_interval = db.Column(db.Integer, nullable=False, default=1200)  # freshness_threshold (seconds)
+    checkall_interval = db.Column(db.Integer, nullable=False, default=60)  # check_interval (minutes)
 
 
 class State(db.Model):
@@ -129,8 +150,6 @@ class State(db.Model):
     name = db.Column(db.String, unique=True, nullable=False)
     severity_id = db.Column(db.Integer, db.ForeignKey('severity.id'))
     severity = db.relationship("Severity", backref='states')
-    entity_type_id = db.Column(db.Integer, db.ForeignKey('entity_type.id'))
-    entity_type = db.relationship("EntityType", backref='states')
 
 
 class Severity(db.Model):
@@ -160,6 +179,7 @@ class EntityType(db.Model):
     __tablename__ = 'entity_type'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)
+    parent_entity_type_id = db.Column(db.Integer, db.ForeignKey('entity_type.id'), nullable=True)  #nullable for the top
 
 
 class Livestate(db.Model):
@@ -171,11 +191,9 @@ class Livestate(db.Model):
     entity_id = db.Column(db.Integer, db.ForeignKey('entity.id'))
     state_id = db.Column(db.Integer, db.ForeignKey('state.id'))
     state = db.relationship('State', backref='livestates', lazy=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    user = db.relationship('User')  # , backref='livestates', lazy=True)
     timestamp = db.Column(db.DateTime, default=time.time())
     output = db.Column(db.String, unique=False, nullable=True)
-    longoutput = db.Column(db.String, unique=False, nullable=True)
+    long_output = db.Column(db.String, unique=False, nullable=True)
     is_acknowledged = db.Column(db.Boolean, default=False, nullable=False)
     metrics = db.relationship('Metric', backref='livestate', lazy=True)
 
@@ -196,7 +214,7 @@ class Metric(db.Model):
 
 class MetricType(db.Model):
     """
-    Possible metric type (value or cumulative)
+    Possible metric type (raw, cumulative, delta)
     """
     __tablename__ = 'metric_type'
     id = db.Column(db.Integer, primary_key=True)
@@ -206,14 +224,14 @@ class MetricType(db.Model):
 
 INITIAL_TABLES = {
     MetricType: [
-        {'name': 'scalaire', 'description': 'Valeur indépendante et fluctuante'},
+        {'name': 'raw', 'description': 'Valeur indépendante et fluctuante'},
         {'name': 'cumulative', 'description': 'Valeur qui se cumule dans le temps'},
         {'name': 'delta', 'description': 'Différence entre deux valeurs cumulatives'},
     ],
     EntityType: [
-        {'name': 'realm'},
-        {'name': 'host'},
-        {'name': 'service'},
+        {'name': 'realm', 'id': 0},
+        {'name': 'host', 'id': 1},
+        {'name': 'service', 'id': 2},
     ],
     Tag: [
         {'name': 'Applications'},
@@ -223,10 +241,19 @@ INITIAL_TABLES = {
         {'name': 'Services'},
     ],
     Severity: [
-        {'name': 'NOTHING', 'description': 'Sans gravité', 'value': 0},
-        {'name': 'LOW', 'description': 'Sévérité basse', 'value': 1},
-        {'name': 'MEDIUM', 'description': 'Sévérité moyenne', 'value': 2},
-        {'name': 'HIGH', 'description': 'Sévérité grave', 'value': 3},
+        {'name': 'NOTHING', 'description': 'Sans gravité', 'value': 0, 'id': 0},
+        {'name': 'LOW', 'description': 'Sévérité basse', 'value': 1, 'id': 1},
+        {'name': 'MEDIUM', 'description': 'Sévérité moyenne', 'value': 2, 'id': 2},
+        {'name': 'HIGH', 'description': 'Sévérité grave', 'value': 3, 'id': 3},
+    ],
+    State: [
+        {'name': 'UP', 'severity_id': 0},
+        {'name': 'DOWN', 'severity_id': 3},
+        {'name': 'UNREACHABLE', 'severity_id': 2},
+        {'name': 'OK', 'severity_id': 0},
+        {'name': 'KO', 'severity_id': 3},
+        {'name': 'WARNING', 'severity_id': 2},
+        {'name': 'CRITICAL', 'severity_id': 3},
     ],
     Right: [
         {'name': 'create'},
@@ -243,7 +270,10 @@ INITIAL_TABLES = {
         {'name': 'admin', 'id': 0}
     ],
     User: [
-        {'name': 'admin', 'password': 'admin', 'role_id': 0}
+        {'name': 'admin', 'password': 'admin', 'role_id': 0, 'id': 0}
+    ],
+    Entity: [
+        {'name': 'All', 'id': 0, 'entity_type_id': 0}
     ]
 }
 

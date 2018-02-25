@@ -31,7 +31,7 @@ def initdb():
                 for data in datas:
                     password = data.pop('password')
                     user = models.User(**data)
-                    user.hash_password(password=password)
+                    user.set_password_hash(password=password)
                     models.db.session.add(user)
             else:
                 for data in datas:

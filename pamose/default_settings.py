@@ -5,7 +5,8 @@ import os
 class Config(object):
     """Base configuration."""
 
-    SECRET_KEY = os.environ.get('PAMOSE_SECRET', 'secret-key')  # TODO: Change me
+    SECRET_KEY = 'PAMOSE_SECRET_KEY'  # TODO: Change me (in install process?)
+    TOKEN_EXPIRATION_TIME = 3600
     APP_DIR = os.path.abspath(os.path.dirname(__file__))  # This directory
     PROJECT_ROOT = os.path.abspath(os.path.join(APP_DIR, os.pardir))
     # DB_PATH = os.path.join(PROJECT_ROOT, DB_NAME)

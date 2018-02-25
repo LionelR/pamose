@@ -1,31 +1,37 @@
 """
 The publicly exposed ressources
 """
+import time
 
-from flask_httpauth import HTTPBasicAuth
+from flask_httpauth import HTTPTokenAuth
 from sqlalchemy.exc import IntegrityError
 from flask_restful import Resource, Api
 from flask import request
 from . import models, schemas
 
 api = Api()
-auth = HTTPBasicAuth()
+auth = HTTPTokenAuth()
 
 
-@auth.verify_password
-def verify_password(username_or_token, password):
-    # first try to authenticate by token
-    user = models.User.verify_auth_token(username_or_token)
-    if not user:
-        # try to authenticate with username/password
-        user = models.User.query.filter_by(name=username_or_token).first()
-        if not user or not user.verify_password(password):
-            return False
-    # g.user = user
-    return user
+@auth.verify_token
+def verify_token(token):
+    """
+    Defines the auth mechanism used by subsequent login_required decorator
+    :param token: str. Token to verify
+    :return: bool.
+    """
+    return models.User.verify_token(token=token)
 
 
 def make_response(result=None, feedback=None, issues=None):
+    """
+    Returns a well formated response (dict/JSON style) to be used in Flask Response, as it is in Alignak
+    :param result: The unique result to return (be set in a list)
+    :param feedback: Informations to return to the client
+    :param issues: Message error
+    :return: dict
+    """
+    # TODO: reformat that in the future
     # Alignak response format
     # alignak-module-ws/docs/source/04_services/05-host-report.rst
     # Response to POST on login:
@@ -61,6 +67,34 @@ def make_response(result=None, feedback=None, issues=None):
     return response
 
 
+class LoginRessource(Resource):
+
+    def post(self):
+        """
+        Request a new token
+        :return:
+        """
+        post_data = request.get_json()
+        if not post_data:
+            return make_response(issues='No enought data provided'), 400
+
+        username = post_data.get('username', None)
+        password = post_data.get('password', None)
+        if username is None or password is None:
+            return make_response(issues='No enought data provided'), 400
+
+        user = models.User.query.filter_by(name=username).first()
+        if user is None or not user.verify_password(password=password):
+            return make_response(issues='Bad credentials'), 400
+
+        token = user.new_token()
+
+        return make_response(result=token.decode('UTF-8')), 200
+
+
+api.add_resource(LoginRessource, '/login')
+
+
 class MetricTypeResource(Resource):
 
     def get(self, id):
@@ -82,17 +116,17 @@ class MetricTypeListResource(Resource):
         return make_response(feedback=json), 200
 
     def post(self):
-        json_data = request.get_json(force=True)
-        if not json_data:
+        post_data = request.get_json(force=True)
+        if not post_data:
             return make_response(issues='No input data provided'), 400
 
         # Validate and deserialize input
         schema = schemas.MetricTypeSchema()
-        data, issues = schema.load(json_data)
+        data, issues = schema.load(post_data)
         if issues:
             return make_response(issues=issues), 422
 
-        new = models.MetricType(**json_data)
+        new = models.MetricType(**post_data)
         try:
             models.db.session.add(new)
             models.db.session.commit()
@@ -115,52 +149,194 @@ class UserResource(Resource):
         Create a new user
         :return:
         """
-        json_data = request.get_json(force=True)
-        if not json_data:
+        post_data = request.get_json(force=True)
+        if not post_data:
             return make_response(issues='No input data provided'), 400
 
-        username = json_data.get('name', None)
-        password = json_data.get('password', None)
+        username = post_data.get('name', None)
+        password = post_data.get('password', None)
         if username is None or password is None:
             return make_response(issues='Not enough input data provided'), 400
 
         if models.User.query.filter_by(username=username).first() is not None:
             return make_response(issues='Existing user'), 400
 
-        user = models.User(username=username)
-        user.hash_password(password)  # Hash and set password_hash in db
+        user = models.User(name=username)
+        user.set_password_hash(password)  # Hash and set password in User instance
         models.db.session.add(user)
         models.db.session.commit()
 
         return make_response(feedback={'name': user.name}), 201  # , {'Location': url_for('get_user',
-                                                                         # id=user.id, _external=True)}
+        # id=user.id, _external=True)}
 
 
 api.add_resource(UserResource, '/user')
 
 
-class LoginRessource(Resource):
+class HostRessource(Resource):
+    """
+    Used to create/update an host and its services/metrics
 
-    # @auth.login_required
-    def post(self):
-        """
-        Request a new token
-        :return:
-        """
-        json_data = request.get_json(force=True)
+    An host is in a Realm.
+    If no realm is provided, fallback to the logged-in user's realm
+    TODO: realm is replaced by another one
+
+
+    Always returns the basic informations for the host:
+        check_interval
+        freshness_threshold
+        passive_check_enabled
+        active_check_enabled
+
+    Requested format:
+
+    name: _HOSTNAME_
+    active_checks_enabled: false
+    passive_checks_enabled: true
+    template:
+        _realm: simulation
+        _sub_realm: False
+        alias: _HOSTNAME_
+        _templates:
+          - olympia-cb
+    livestate:
+        timestamp: _TIMESTAMP_
+        state: UP
+        output: _HOSTOUTPUT_
+        long_output: I am a simulated host
+    services: [_SERVICES__]
+        service:
+            name: _SERVICENAME_
+            active_checks_enabled: false
+            passive_checks_enabled: true
+            livestate:
+                timestamp: _TIMESTAMP_
+                state: OK
+                output: Simulated Service
+                perf_data: _PERFDATA_
+
+    """
+
+    @auth.login_required
+    def patch(self):
+        json_data = request.get_json()
         if not json_data:
             return make_response(issues='No input data provided'), 400
 
-        username = json_data.get('name', None)
-        password = json_data.get('password', None)
+        host_name = json_data.get('name')
+        is_monitored = json_data.get('passive_checks_enabled', False)
 
-        auth_user = verify_password(username_or_token=username, password=password)
-        if auth_user:
-            token = auth_user.generate_auth_token()
-            return make_response(result=token.decode('ascii')), 200
+        # Host get/create
+        rec_entity_host = models.Entity.query.filter_by(name=host_name).first()
+        if not rec_entity_host:  # Create it
+            # Realm get/create
+            template = json_data.get('template', None)  # TODO: Better solution for realm info retrieving
+            realm_name = template.get('_realm', None)
+            # host_templates = template.get('_templates', None)  # TODO: Define templates
+            rec_entity_realm = models.Entity.query.filter_by(name=realm_name).first()
+            if not rec_entity_realm:  # Create it
+                default_realm = models.Entity.query.get(0)
+                rec_entity_realm = models.Entity(name=realm_name,
+                                                 parent_entity_id=default_realm,
+                                                 entity_type_id=models.EntityType.query.filter_by(
+                                                     name='realm').first().id
+                                                 )
+                models.db.session.add(rec_entity_realm)
+
+            rec_entity_host = models.Entity(name=host_name,
+                                            parent_entity_id=rec_entity_realm.id,
+                                            entity_type_id=models.EntityType.query.filter_by(name='host').first().id,
+                                            is_monitored=is_monitored
+                                            )
+            models.db.session.add(rec_entity_host)
+
+        # Host Livestate create
+        livestate = json_data.get('livestate', None)
+        if livestate:
+            rec_livestate = insert_livestate(entity_parent=rec_entity_host, livestate=livestate)
+
+            # Metric create
+            raw_metrics = livestate.get('perf_data', None)
+            if raw_metrics:
+                insert_metrics(entity_livestate=rec_livestate, raw_metrics=raw_metrics)
+
+        # Services get/create
+        services = json_data.get('services', None)
+        if services:
+            for service in services:
+                service_name = service.get('name', None)
+                service_name = "{0}||{1}".format(host_name, service_name)  # For uniqueness
+                is_monitored = service.get('passive_checks_enabled', False)
+
+                rec_entity_service = models.Entity.query.filter_by(name=service_name).first()
+                if not rec_entity_service:  # Create it
+                    rec_entity_service = models.Entity(name=service_name,
+                                                       parent_entity_id=rec_entity_host.id,
+                                                       entity_type_id=models.EntityType.query.filter_by(
+                                                           name='service').first().id,
+                                                       is_monitored=is_monitored
+                                                       )
+                    models.db.session.add(rec_entity_service)
+
+                # Service Livestate create
+                livestate = service.get('livestate', None)
+                if livestate:
+                    rec_livestate = insert_livestate(entity_parent=rec_entity_service, livestate=livestate)
+
+                    # Metric create
+                    raw_metrics = livestate.get('perf_data', None)
+                    if raw_metrics:
+                        insert_metrics(entity_livestate=rec_livestate, raw_metrics=raw_metrics)
+
+
+def insert_livestate(entity_parent, livestate):
+    """
+    Insert a Livestate in DB for an parent entity
+    :param entity_parent: models.Entity (Host or Service)
+    :param livestate: dict. The livestate to insert
+    :return: models.Livestate
+    """
+    timestamp = livestate.get('timestamp', time.time())
+    state = livestate.get('state')
+    output = livestate.get('output')
+    long_output = livestate.get('long_output')
+
+    entity_state = models.State.query.filter_by(name=state).first()
+    rec_livestate = models.Livestate(
+        timestamp=timestamp,
+        output=output,
+        long_output=long_output,
+        entity_id=entity_parent.id,
+        state_id=entity_state.id,
+        is_acknowledged=entity_parent.is_auto_acknowledge
+    )
+    models.db.session.add(rec_livestate)
+    return rec_livestate
+
+
+def insert_metrics(entity_livestate, raw_metrics):
+    """
+    Insert Metrics in DB
+    :param entity_livestate: models.Livestate. Livestate instance
+    :param raw_metrics: str. Metrics in raw format
+        raw_metrics (perf_data) format: "'metric1_name'=metric1_value(c) 'metric2_name'= metric2_value(c)..."
+        if value ends with 'c', then it's cumulative, else raw value
+    :return: Nothing
+    """
+
+    for raw_metric in raw_metrics.strip().split(' '):
+        name, value = raw_metric.split('=')
+        if value.endswith('c'):
+            value = value[:-1]
+            entity_metric_type = models.MetricType.query.filter_by(name='cumulative').first()
         else:
-            return make_response(issues="No accepted credentials"), 400
+            entity_metric_type = models.MetricType.query.filter_by(name='raw').first()
 
-
-api.add_resource(LoginRessource, '/login')
-
+        rec_metric = models.Metric(
+            timestamp=entity_livestate.timestamp,
+            name=name,
+            value=float(value),
+            livestate_id=entity_livestate.id,
+            metric_type_id=entity_metric_type.id
+        )
+        models.db.session.add(rec_metric)

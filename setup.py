@@ -13,6 +13,7 @@ setup(
         'werkzeug',
         'itsdangerous',
         'passlib',
+        'requests',
         'sqlalchemy',
         'marshmallow-sqlalchemy',
         'flask',
