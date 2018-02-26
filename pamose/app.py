@@ -34,16 +34,11 @@ def create_app(config=None):
     if config:
         app.config.update(config)  # Extras config parameters
 
-    # Register extras application commands lines
     register_commands(app=app)
 
-    # Register loggers
     register_loggers(app)
 
-    # Register extensions
-    register_db(app=app)
-    register_schemas(app=app)
-    register_ressources(app=app)
+    register_extensions(app=app)
 
     # register_errorhandlers(app)
     # register_shellcontext(app)
@@ -51,17 +46,13 @@ def create_app(config=None):
     return app
 
 
-def register_db(app):
+def register_extensions(app):
     app.logger.debug("Registering database...")
     db.init_app(app=app)
 
-
-def register_schemas(app):
     app.logger.debug("Registering schemas...")
     ma.init_app(app=app)
 
-
-def register_ressources(app):
     app.logger.debug("Registering ressources...")
     api.init_app(app)
 

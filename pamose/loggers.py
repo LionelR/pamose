@@ -24,5 +24,3 @@ def register(app):
         stream_handler.setFormatter(logging.Formatter(log_format))
         del app.logger.handlers[:]
         app.logger.addHandler(stream_handler)
-
-    app.logger.debug("Registering loggers...")

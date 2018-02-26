@@ -3,18 +3,19 @@ The publicly exposed ressources
 """
 import time
 
-from flask_httpauth import HTTPTokenAuth
+from flask_httpauth import HTTPTokenAuth, HTTPBasicAuth
 from sqlalchemy.exc import IntegrityError
 from flask_restful import Resource, Api
 from flask import request
 from . import models, schemas
 
 api = Api()
-auth = HTTPTokenAuth()
+auth = HTTPBasicAuth()
 
 
-@auth.verify_token
-def verify_token(token):
+# @auth.verify_token
+@auth.verify_password
+def verify_token(token, password):
     """
     Defines the auth mechanism used by subsequent login_required decorator
     :param token: str. Token to verify
@@ -97,6 +98,7 @@ api.add_resource(LoginRessource, '/login')
 
 class MetricTypeResource(Resource):
 
+    @auth.login_required
     def get(self, id):
         data = models.MetricType.query.filter_by(id=id).first()
         if not data:
@@ -108,6 +110,7 @@ class MetricTypeResource(Resource):
 
 class MetricTypeListResource(Resource):
 
+    @auth.login_required
     def get(self):
         datas = models.MetricType.query.all()
         schema = schemas.MetricTypeSchema(many=True)
@@ -115,6 +118,7 @@ class MetricTypeListResource(Resource):
         json = schema.dump(obj=datas).data
         return make_response(feedback=json), 200
 
+    @auth.login_required
     def post(self):
         post_data = request.get_json(force=True)
         if not post_data:
