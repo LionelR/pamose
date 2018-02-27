@@ -2,7 +2,7 @@
 Database models definitions
 """
 
-import time
+import datetime as dt
 from flask import current_app
 from flask_sqlalchemy import SQLAlchemy
 from passlib.apps import custom_app_context as pwd_context
@@ -67,7 +67,8 @@ class User(db.Model):
         :return: str. the serialized new token with the user's id in it
         """
         s = Serializer(current_app.config['SECRET_KEY'], expires_in=current_app.config['TOKEN_EXPIRATION_TIME'])
-        return s.dumps({'id': self.id})
+        token = s.dumps({'id': self.id})
+        return token
 
     @staticmethod
     def verify_token(token):
@@ -79,10 +80,8 @@ class User(db.Model):
         s = Serializer(current_app.config['SECRET_KEY'])
         try:
             data = s.loads(token)
-        except SignatureExpired:
-            return False  # valid token, but expired
-        except BadSignature:
-            return False  # invalid token
+        except (SignatureExpired, BadSignature):
+            return False
         user = User.query.get(data['id'])
         return user is not None
 
@@ -191,7 +190,7 @@ class Livestate(db.Model):
     entity_id = db.Column(db.Integer, db.ForeignKey('entity.id'))
     state_id = db.Column(db.Integer, db.ForeignKey('state.id'))
     state = db.relationship('State', backref='livestates', lazy=True)
-    timestamp = db.Column(db.DateTime, default=time.time())
+    timestamp = db.Column(db.DateTime, default=dt.datetime.now())
     output = db.Column(db.String, unique=False, nullable=True)
     long_output = db.Column(db.String, unique=False, nullable=True)
     is_acknowledged = db.Column(db.Boolean, default=False, nullable=False)
@@ -204,7 +203,7 @@ class Metric(db.Model):
     """
     __tablename__ = 'metric'
     id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=time.time())
+    timestamp = db.Column(db.DateTime, default=dt.datetime.now())
     name = db.Column(db.String, unique=False, nullable=False)
     value = db.Column(db.Float, unique=False, nullable=True)
     livestate_id = db.Column(db.Integer, db.ForeignKey('livestate.id'))

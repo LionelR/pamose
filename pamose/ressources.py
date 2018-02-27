@@ -1,12 +1,13 @@
 """
 The publicly exposed ressources
 """
-import time
+
+import datetime as dt
 
 from flask_httpauth import HTTPTokenAuth, HTTPBasicAuth
 from sqlalchemy.exc import IntegrityError
 from flask_restful import Resource, Api
-from flask import request
+from flask import request, current_app
 from . import models, schemas
 
 api = Api()
@@ -21,7 +22,8 @@ def verify_token(token, password):
     :param token: str. Token to verify
     :return: bool.
     """
-    return models.User.verify_token(token=token)
+    verified = models.User.verify_token(token=token.encode('UTF-8'))
+    return verified
 
 
 def make_response(result=None, feedback=None, issues=None):
@@ -60,12 +62,22 @@ def make_response(result=None, feedback=None, issues=None):
     response = {'_status': status}
 
     if result:
-        response['_result'] = [result]  # TODO: Remove list
+        response['_result'] = result  # TODO: Remove list
     if feedback:
         response['_feedback'] = feedback  # Todo: Remove feedback and use result
     if issues:
         response['_issues'] = issues
     return response
+
+
+def flush(rec):
+    """
+    FLush (commit) the record in the database
+    :param rec: db.record
+    :return: Nothing
+    """
+    models.db.session.add(rec)
+    models.db.session.commit()
 
 
 class LoginRessource(Resource):
@@ -241,18 +253,18 @@ class HostRessource(Resource):
             if not rec_entity_realm:  # Create it
                 default_realm = models.Entity.query.get(0)
                 rec_entity_realm = models.Entity(name=realm_name,
-                                                 parent_entity_id=default_realm,
+                                                 parent_entity_id=default_realm.id,
                                                  entity_type_id=models.EntityType.query.filter_by(
                                                      name='realm').first().id
                                                  )
-                models.db.session.add(rec_entity_realm)
+                flush(rec_entity_realm)
 
             rec_entity_host = models.Entity(name=host_name,
                                             parent_entity_id=rec_entity_realm.id,
                                             entity_type_id=models.EntityType.query.filter_by(name='host').first().id,
                                             is_monitored=is_monitored
                                             )
-            models.db.session.add(rec_entity_host)
+            flush(rec_entity_host)
 
         # Host Livestate create
         livestate = json_data.get('livestate', None)
@@ -266,6 +278,7 @@ class HostRessource(Resource):
 
         # Services get/create
         services = json_data.get('services', None)
+        current_app.logger.debug("services: {0}".format(services))
         if services:
             for service in services:
                 service_name = service.get('name', None)
@@ -280,7 +293,7 @@ class HostRessource(Resource):
                                                            name='service').first().id,
                                                        is_monitored=is_monitored
                                                        )
-                    models.db.session.add(rec_entity_service)
+                    flush(rec_entity_service)
 
                 # Service Livestate create
                 livestate = service.get('livestate', None)
@@ -292,6 +305,19 @@ class HostRessource(Resource):
                     if raw_metrics:
                         insert_metrics(entity_livestate=rec_livestate, raw_metrics=raw_metrics)
 
+        models.db.session.commit()
+
+        feedback = {
+            'check_interval': rec_entity_host.checkall_interval,
+            'freshness_threshold': rec_entity_host.heartbeat_interval,
+            'passive_check_enabled': rec_entity_host.is_monitored,
+            'active_check_enabled': False
+        }
+        return make_response(feedback=feedback), 200
+
+
+api.add_resource(HostRessource, '/host')
+
 
 def insert_livestate(entity_parent, livestate):
     """
@@ -300,21 +326,21 @@ def insert_livestate(entity_parent, livestate):
     :param livestate: dict. The livestate to insert
     :return: models.Livestate
     """
-    timestamp = livestate.get('timestamp', time.time())
+    timestamp = livestate.get('timestamp', dt.datetime.now().timestamp())
     state = livestate.get('state')
     output = livestate.get('output')
     long_output = livestate.get('long_output')
 
     entity_state = models.State.query.filter_by(name=state).first()
     rec_livestate = models.Livestate(
-        timestamp=timestamp,
+        timestamp=dt.datetime.fromtimestamp(timestamp),
         output=output,
         long_output=long_output,
         entity_id=entity_parent.id,
         state_id=entity_state.id,
         is_acknowledged=entity_parent.is_auto_acknowledge
     )
-    models.db.session.add(rec_livestate)
+    flush(rec_livestate)
     return rec_livestate
 
 
@@ -328,10 +354,11 @@ def insert_metrics(entity_livestate, raw_metrics):
     :return: Nothing
     """
 
+    to_flush = False
     for raw_metric in raw_metrics.strip().split(' '):
         name, value = raw_metric.split('=')
         if value.endswith('c'):
-            value = value[:-1]
+            value = value[:-1].replace("'", "")
             entity_metric_type = models.MetricType.query.filter_by(name='cumulative').first()
         else:
             entity_metric_type = models.MetricType.query.filter_by(name='raw').first()
@@ -344,3 +371,7 @@ def insert_metrics(entity_livestate, raw_metrics):
             metric_type_id=entity_metric_type.id
         )
         models.db.session.add(rec_metric)
+        to_flush = True
+
+    if to_flush:
+        models.db.session.commit()
