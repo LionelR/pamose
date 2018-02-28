@@ -269,12 +269,7 @@ class HostRessource(Resource):
         # Host Livestate create
         livestate = json_data.get('livestate', None)
         if livestate:
-            rec_livestate = insert_livestate(entity_parent=rec_entity_host, livestate=livestate)
-
-            # Metric create
-            raw_metrics = livestate.get('perf_data', None)
-            if raw_metrics:
-                insert_metrics(entity_livestate=rec_livestate, raw_metrics=raw_metrics)
+            insert_livestates(rec_parent=rec_entity_host, livestates=livestate)
 
         # Services get/create
         services = json_data.get('services', None)
@@ -298,12 +293,7 @@ class HostRessource(Resource):
                 # Service Livestate create
                 livestate = service.get('livestate', None)
                 if livestate:
-                    rec_livestate = insert_livestate(entity_parent=rec_entity_service, livestate=livestate)
-
-                    # Metric create
-                    raw_metrics = livestate.get('perf_data', None)
-                    if raw_metrics:
-                        insert_metrics(entity_livestate=rec_livestate, raw_metrics=raw_metrics)
+                    insert_livestates(rec_parent=rec_entity_service, livestates=livestate)
 
         models.db.session.commit()
 
@@ -319,32 +309,37 @@ class HostRessource(Resource):
 api.add_resource(HostRessource, '/host')
 
 
-def insert_livestate(entity_parent, livestate):
+def insert_livestates(rec_parent, livestates):
     """
-    Insert a Livestate in DB for an parent entity
-    :param entity_parent: models.Entity (Host or Service)
-    :param livestate: dict. The livestate to insert
-    :return: models.Livestate
+    Insert Livestates in DB for an parent entity
+    :param rec_parent: models.Entity (Host or Service)
+    :param livestates: list of dict. The livestates to insert
+    :return: Nothing
     """
-    timestamp = livestate.get('timestamp', dt.datetime.now().timestamp())
-    state = livestate.get('state')
-    output = livestate.get('output')
-    long_output = livestate.get('long_output')
+    # current_app.logger.debug(livestates)
+    for livestate in livestates:
+        timestamp = livestate.get('timestamp', dt.datetime.now().timestamp())
+        state = livestate.get('state')
+        output = livestate.get('output')
+        long_output = livestate.get('long_output')
 
-    entity_state = models.State.query.filter_by(name=state).first()
-    rec_livestate = models.Livestate(
-        timestamp=dt.datetime.fromtimestamp(timestamp),
-        output=output,
-        long_output=long_output,
-        entity_id=entity_parent.id,
-        state_id=entity_state.id,
-        is_acknowledged=entity_parent.is_auto_acknowledge
-    )
-    flush(rec_livestate)
-    return rec_livestate
+        entity_state = models.State.query.filter_by(name=state).first()
+        rec_livestate = models.Livestate(
+            timestamp=dt.datetime.fromtimestamp(timestamp),
+            output=output,
+            long_output=long_output,
+            entity_id=rec_parent.id,
+            state_id=entity_state.id,
+            is_acknowledged=rec_parent.is_auto_acknowledge
+        )
+        flush(rec_livestate)
+        # Metric create
+        raw_metrics = livestate.get('perf_data', None)
+        if raw_metrics:
+            insert_metrics(rec_livestate=rec_livestate, raw_metrics=raw_metrics)
 
 
-def insert_metrics(entity_livestate, raw_metrics):
+def insert_metrics(rec_livestate, raw_metrics):
     """
     Insert Metrics in DB
     :param entity_livestate: models.Livestate. Livestate instance
@@ -364,10 +359,10 @@ def insert_metrics(entity_livestate, raw_metrics):
             entity_metric_type = models.MetricType.query.filter_by(name='raw').first()
 
         rec_metric = models.Metric(
-            timestamp=entity_livestate.timestamp,
+            timestamp=rec_livestate.timestamp,
             name=name,
             value=float(value),
-            livestate_id=entity_livestate.id,
+            livestate_id=rec_livestate.id,
             metric_type_id=entity_metric_type.id
         )
         models.db.session.add(rec_metric)
