@@ -342,7 +342,7 @@ def insert_livestates(rec_parent, livestates):
 def insert_metrics(rec_livestate, raw_metrics):
     """
     Insert Metrics in DB
-    :param entity_livestate: models.Livestate. Livestate instance
+    :param rec_livestate: models.Livestate. A Livestate record
     :param raw_metrics: str. Metrics in raw format
         raw_metrics (perf_data) format: "'metric1_name'=metric1_value(c) 'metric2_name'= metric2_value(c)..."
         if value ends with 'c', then it's cumulative, else raw value
