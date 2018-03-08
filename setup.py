@@ -18,7 +18,6 @@ setup(
         'sqlalchemy',
         'marshmallow-sqlalchemy',
         'flask',
-        'flask-restful',
         'flask-sqlalchemy',
         'flask_marshmallow',
         'flask_httpauth'

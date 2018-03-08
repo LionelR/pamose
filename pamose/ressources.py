@@ -4,17 +4,14 @@ The publicly exposed ressources
 
 import datetime as dt
 
-from flask_httpauth import HTTPTokenAuth, HTTPBasicAuth
-from sqlalchemy.exc import IntegrityError
-from flask_restful import Resource, Api
-from flask import request, current_app
+from flask_httpauth import HTTPBasicAuth
+from flask import request, current_app, jsonify
+from flask.views import View, MethodView
 from . import models, schemas
 
-api = Api()
 auth = HTTPBasicAuth()
 
 
-# @auth.verify_token
 @auth.verify_password
 def verify_token(token, password):
     """
@@ -26,7 +23,7 @@ def verify_token(token, password):
     return verified
 
 
-def make_response(result=None, feedback=None, issues=None):
+def as_json(result=None, feedback=None, issues=None):
     """
     Returns a well formated response (dict/JSON style) to be used in Flask Response, as it is in Alignak
     :param result: The unique result to return (be set in a list)
@@ -67,21 +64,14 @@ def make_response(result=None, feedback=None, issues=None):
         response['_feedback'] = feedback  # Todo: Remove feedback and use result
     if issues:
         response['_issues'] = issues
-    return response
+
+    return jsonify(response)
 
 
-def flush(rec):
+class LoginRessource(MethodView):
     """
-    FLush (commit) the record in the database
-    :param rec: db.record
-    :return: Nothing
+    Used to returns a token from a username/password REST POST
     """
-    models.db.session.add(rec)
-    # models.db.session.commit()
-
-
-class LoginRessource(Resource):
-
     def post(self):
         """
         Request a new token
@@ -89,28 +79,25 @@ class LoginRessource(Resource):
         """
         post_data = request.get_json()
         if not post_data:
-            return make_response(issues='No enought data provided'), 400
+            return as_json(issues='No enought data provided'), 400
 
         username = post_data.get('username', None)
         password = post_data.get('password', None)
         if username is None or password is None:
-            return make_response(issues='No enought data provided'), 400
+            return as_json(issues='No enought data provided'), 400
 
         user = models.User.query.filter_by(name=username).first()
         if user is None or not user.verify_password(password=password):
-            return make_response(issues='Bad credentials'), 400
+            return as_json(issues='Bad credentials'), 400
 
         token = user.new_token()
 
-        return make_response(result=token.decode('UTF-8')), 200
+        return as_json(result=token.decode('UTF-8')), 200
 
 
-api.add_resource(LoginRessource, '/login')
-
-
-class HostRessource(Resource):
+class HostRessource(MethodView):
     """
-    Used to create/update an host and its services/metrics
+    Used to create/update an host and its services/metrics via a REST PATCH
 
     An host is in a Realm.
     If no realm is provided, fallback to the logged-in user's realm
@@ -151,12 +138,12 @@ class HostRessource(Resource):
                 perf_data: _PERFDATA_
 
     """
+    decorators = [auth.login_required]
 
-    @auth.login_required
     def patch(self):
         json_data = request.get_json()
         if not json_data:
-            return make_response(issues='No input data provided'), 400
+            return as_json(issues='No input data provided'), 400
 
         host_name = json_data.get('name')
         is_monitored = json_data.get('passive_checks_enabled', False)
@@ -223,10 +210,7 @@ class HostRessource(Resource):
             'passive_check_enabled': rec_entity_host.is_monitored,
             'active_check_enabled': False
         }
-        return make_response(feedback=feedback), 200
-
-
-api.add_resource(HostRessource, '/host')
+        return as_json(feedback=feedback), 200
 
 
 def insert_livestates(rec_parent, livestates):
@@ -287,3 +271,8 @@ def insert_metrics(rec_livestate, raw_metrics):
         )
         rec_livestate.metrics.append(rec_metric)
         models.db.session.add(rec_metric)
+
+
+def api(app):
+    app.add_url_rule('/login', view_func=LoginRessource.as_view('login'))
+    app.add_url_rule('/host', view_func=HostRessource.as_view('host'))

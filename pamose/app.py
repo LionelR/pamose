@@ -54,7 +54,7 @@ def register_extensions(app):
     ma.init_app(app=app)
 
     app.logger.debug("Registering ressources...")
-    api.init_app(app)
+    api(app)
 
 
 def register_commands(app):
