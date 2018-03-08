@@ -77,7 +77,7 @@ def flush(rec):
     :return: Nothing
     """
     models.db.session.add(rec)
-    models.db.session.commit()
+    # models.db.session.commit()
 
 
 class LoginRessource(Resource):
@@ -106,87 +106,6 @@ class LoginRessource(Resource):
 
 
 api.add_resource(LoginRessource, '/login')
-
-
-class MetricTypeResource(Resource):
-
-    @auth.login_required
-    def get(self, id):
-        data = models.MetricType.query.filter_by(id=id).first()
-        if not data:
-            return make_response(issues='Not found'), 404
-        schema = schemas.MetricTypeSchema()
-        json = schema.dump(obj=data).data
-        return make_response(feedback=json), 200
-
-
-class MetricTypeListResource(Resource):
-
-    @auth.login_required
-    def get(self):
-        datas = models.MetricType.query.all()
-        schema = schemas.MetricTypeSchema(many=True)
-        # json = schema.jsonify(obj=datas)
-        json = schema.dump(obj=datas).data
-        return make_response(feedback=json), 200
-
-    @auth.login_required
-    def post(self):
-        post_data = request.get_json(force=True)
-        if not post_data:
-            return make_response(issues='No input data provided'), 400
-
-        # Validate and deserialize input
-        schema = schemas.MetricTypeSchema()
-        data, issues = schema.load(post_data)
-        if issues:
-            return make_response(issues=issues), 422
-
-        new = models.MetricType(**post_data)
-        try:
-            models.db.session.add(new)
-            models.db.session.commit()
-            result = schema.dump(new).data
-        except IntegrityError as err:
-            return make_response(issues='Data already in database'), 500
-        else:
-            return make_response(feedback=result), 201
-
-
-api.add_resource(MetricTypeResource, '/metrictype/<id>')
-api.add_resource(MetricTypeListResource, '/metrictypes')
-
-
-class UserResource(Resource):
-
-    @auth.login_required
-    def post(self):
-        """
-        Create a new user
-        :return:
-        """
-        post_data = request.get_json(force=True)
-        if not post_data:
-            return make_response(issues='No input data provided'), 400
-
-        username = post_data.get('name', None)
-        password = post_data.get('password', None)
-        if username is None or password is None:
-            return make_response(issues='Not enough input data provided'), 400
-
-        if models.User.query.filter_by(username=username).first() is not None:
-            return make_response(issues='Existing user'), 400
-
-        user = models.User(name=username)
-        user.set_password_hash(password)  # Hash and set password in User instance
-        models.db.session.add(user)
-        models.db.session.commit()
-
-        return make_response(feedback={'name': user.name}), 201  # , {'Location': url_for('get_user',
-        # id=user.id, _external=True)}
-
-
-api.add_resource(UserResource, '/user')
 
 
 class HostRessource(Resource):
@@ -253,18 +172,18 @@ class HostRessource(Resource):
             if not rec_entity_realm:  # Create it
                 default_realm = models.Entity.query.get(0)
                 rec_entity_realm = models.Entity(name=realm_name,
-                                                 parent_entity_id=default_realm.id,
                                                  entity_type_id=models.EntityType.query.filter_by(
                                                      name='realm').first().id
                                                  )
-                flush(rec_entity_realm)
+                default_realm.childs.append(rec_entity_realm)
+                models.db.session.add(rec_entity_realm)
 
             rec_entity_host = models.Entity(name=host_name,
-                                            parent_entity_id=rec_entity_realm.id,
                                             entity_type_id=models.EntityType.query.filter_by(name='host').first().id,
                                             is_monitored=is_monitored
                                             )
-            flush(rec_entity_host)
+            rec_entity_realm.childs.append(rec_entity_host)
+            models.db.session.add(rec_entity_host)
 
         # Host Livestate create
         livestate = json_data.get('livestate', None)
@@ -288,7 +207,8 @@ class HostRessource(Resource):
                                                            name='service').first().id,
                                                        is_monitored=is_monitored
                                                        )
-                    flush(rec_entity_service)
+                    rec_entity_host.childs.append(rec_entity_service)
+                    models.db.session.add(rec_entity_service)
 
                 # Service Livestate create
                 livestate = service.get('livestate', None)
@@ -323,20 +243,22 @@ def insert_livestates(rec_parent, livestates):
         output = livestate.get('output')
         long_output = livestate.get('long_output')
 
-        entity_state = models.State.query.filter_by(name=state).first()
+        rec_state = models.State.query.filter_by(name=state).first()
         rec_livestate = models.Livestate(
             timestamp=dt.datetime.fromtimestamp(timestamp),
             output=output,
             long_output=long_output,
             entity_id=rec_parent.id,
-            state_id=entity_state.id,
+            state_id=rec_state.id,
             is_acknowledged=rec_parent.is_auto_acknowledge
         )
-        flush(rec_livestate)
         # Metric create
         raw_metrics = livestate.get('perf_data', None)
         if raw_metrics:
             insert_metrics(rec_livestate=rec_livestate, raw_metrics=raw_metrics)
+
+        rec_parent.livestates.append(rec_livestate)
+        models.db.session.add(rec_livestate)
 
 
 def insert_metrics(rec_livestate, raw_metrics):
@@ -349,24 +271,19 @@ def insert_metrics(rec_livestate, raw_metrics):
     :return: Nothing
     """
 
-    to_flush = False
     for raw_metric in raw_metrics.strip().split(' '):
         name, value = raw_metric.split('=')
         if value.endswith('c'):
             value = value[:-1].replace("'", "")
-            entity_metric_type = models.MetricType.query.filter_by(name='cumulative').first()
+            rec_metric_type = models.MetricType.query.filter_by(name='cumulative').first()
         else:
-            entity_metric_type = models.MetricType.query.filter_by(name='raw').first()
+            rec_metric_type = models.MetricType.query.filter_by(name='raw').first()
 
         rec_metric = models.Metric(
             timestamp=rec_livestate.timestamp,
             name=name,
             value=float(value),
-            livestate_id=rec_livestate.id,
-            metric_type_id=entity_metric_type.id
+            metric_type_id=rec_metric_type.id
         )
+        rec_livestate.metrics.append(rec_metric)
         models.db.session.add(rec_metric)
-        to_flush = True
-
-    if to_flush:
-        models.db.session.commit()

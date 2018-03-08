@@ -14,6 +14,7 @@ setup(
         'itsdangerous',
         'passlib',
         'requests',
+        'psycopg2',
         'sqlalchemy',
         'marshmallow-sqlalchemy',
         'flask',

@@ -4,21 +4,32 @@ PAssive MOnitoring SErver description
 
 ## Quick Start
 
-Run the application:
+On Debian/Ubuntu:
 
-    make run
+    sudo apt install libpq-dev postgresql
+
+Configure the database:
+
+    # sudo su postgres
+    postgres# psql
+    postgres=> CREATE USER pamose WITH PASSWORD 'pamose';
+    postgres=> CREATE DATABASE pamose WITH OWNER pamose;
+    postgres=> \q
+
+and test the newly created user/database:
+
+    # psql -h localhost -U pamose pamose  
+
+Run the application:
+    
+    vim pamose.cfg
+    export PAMOSE_SETTINGS=/path/to/pamose.cfg
+    pamose initdb  # Just the first time for creating/populating the DB
+    pamose run
 
 And open it in the browser at [http://127.0.0.1:5000/](http://127.0.0.1:5000/)
 
 
-## Prerequisites
-
-This is built to be used with Python 3. Update `Makefile` to switch to Python 2 if needed.
-
-Some Flask dependencies are compiled during installation, so `gcc` and Python header files need to be present.
-For example, on Ubuntu:
-
-    apt install build-essential python3-dev
 
 
 ## Development environment and release process
@@ -42,13 +53,7 @@ For example, on Ubuntu:
    deploying
 
 
-## Deployment
-
-If you are interested in an out-of-the-box deployment automation, check out accompanying
-[`cookiecutter-flask-ansible`](https://github.com/candidtim/cookiecutter-flask-ansible).
-
-Or, check out [Deploying with Fabric](http://flask.pocoo.org/docs/0.12/patterns/fabric/#fabric-deployment) on one of the
-possible ways to automate the deployment.
+## Build
 
 In either case, generally the idea is to build a package (`make sdist`), deliver it to a server (`scp ...`),
 install it (`pip install pamose.tar.gz`), ensure that configuration file exists and
